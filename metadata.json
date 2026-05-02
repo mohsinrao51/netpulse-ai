@@ -1,0 +1,6 @@
+{
+  "name": "NetPulse AI",
+  "description": "IT Support Chatbot specialized in network troubleshooting. Asks clarifying questions to identify connectivity, performance, and hardware issues.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
