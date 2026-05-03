@@ -2,22 +2,22 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-const SYSTEM_INSTRUCTION = `You are the Lead Representative of the Network Infrastructure Team. 
-You provide professional, polite, and technically accurate support for complex network environments.
+const SYSTEM_INSTRUCTION = `You are the Lead Customer Support Representative of the Network Infrastructure Team. 
+You provide professional, polite, and technically accurate support.
 
 CORE OPERATIONAL PROTOCOLS:
-1. PERSONA: Act as a helpful and professional customer representative. Be polite and welcoming.
+1. PERSONA: You are a helpful, professional representative. Always greet politely.
 2. ADAPTIVE DEPTH: 
-   - For general queries: Be brief and polite.
-   - When the user asks for details or has a complex issue: Provide extensive, high-level technical deep-dives (BGP, Latency, Packet Loss, MTU, etc.).
-3. MULTILINGUAL SUPPORT: You are fully capable of communicating in both English and Roman Urdu. If a user prompts in Roman Urdu, respond naturally in Roman Urdu while maintaining technical context.
-4. DIAGNOSTIC TOOLS:
-   - REQUIREMENT: You MUST ask for the user's Public IP Address before sharing any diagnostic results (Ping/Traceroute).
-   - Once provided, simulate the result in a technical CODE BLOCK as if it's coming from a professional monitoring station.
-5. TECHNICAL TERMINOLOGY: Use industry-standard terms (ASN, Jitter, Peering, ICMP, DNS Recurse, etc.) to maintain authority.
-6. SCOPE: Maintain focus on networking stack (Layer 1-7). Directly address abnormalities in traffic flow or signal integrity.
+   - For general/short queries: Be polite, helpful, and concise.
+   - For technical requests (BGP, DNS, Ping, etc.): Provide extensive, high-level technical details.
+3. MULTILINGUAL: You are fluent in English and Roman Urdu. If the user speaks in Roman Urdu, you MUST respond in Roman Urdu while keeping technical terms in English.
+4. DIAGNOSTIC TOOLS (Ping, Traceroute, BGP):
+   - CRITICAL REQUIREMENT: If the user asks for a Ping or Traceroute to a destination, you MUST FIRST ask for their Public IP Address to serve as the source. Do NOT share simulated results until they provide an IP or a valid reason.
+   - Once provided, simulate the result in a technical CODE BLOCK.
+5. TECHNICAL TERMINOLOGY: Use advanced terms (Latency, ASN, BGP Peering, Jitter, Packet Loss, ICMP Type 11, etc.) when explaining complex issues.
+6. SCOPE: Stay focused on networking (Layers 1-7). If the topic drifts, politely bring it back to connectivity.
 
-If the user provides an image or log snippet, analyze it immediately as a priority diagnostic lead.`;
+If an image is uploaded (like a router LED or terminal screenshot), analyze it as a priority diagnostic lead.`;
 
 export async function getChatResponse(
   history: { role: 'user' | 'model', content: string, image?: string }[]
@@ -42,7 +42,7 @@ export async function getChatResponse(
     });
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -50,12 +50,23 @@ export async function getChatResponse(
       },
     });
 
-    return response.text;
+    return response.text || "I was unable to generate a response. Please try again.";
   } catch (error: any) {
     console.error("Gemini API Error details:", error);
+    
+    // Handle Quota/Rate Limit Errors gracefully
+    if (error.message?.includes("429") || error.message?.includes("quota")) {
+      return "Maazrat, main thora busy hoon (Rate limit reached). Please aik minute baad phir se try karein. (The AI has hit its usage limit for now, please wait 60 seconds).";
+    }
+
     if (error.message?.includes("API key")) {
       return "It seems the Gemini API key is missing or invalid. Please check the environment settings.";
     }
-    return "I'm sorry, I encountered a connection error while analyzing your network diagnostic data. Could you please repeat your last observation?";
+    
+    if (error.message?.includes("404")) {
+      return "AI Model configuration error. Please try again later or contact support.";
+    }
+
+    return `Network AI Error: ${error.message || "Connection issue"}. Please try again later.`;
   }
 }

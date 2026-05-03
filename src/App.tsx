@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Wifi, RefreshCcw, WifiOff, Home, Image as ImageIcon, X, Mic, MicOff, Volume2 } from 'lucide-react';
+import { Send, Bot, User, Wifi, RefreshCcw, WifiOff, Home, Image as ImageIcon, X, Mic, MicOff, Volume2, Trash2, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { getChatResponse } from './services/geminiService';
@@ -128,9 +128,47 @@ export default function App() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!input.trim() && !selectedImage) || isLoading) return;
+  const deleteSession = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSessions(prev => prev.filter(s => s.id !== id));
+    if (currentSessionId === id) {
+      setCurrentSessionId(null);
+    }
+  };
+
+  const CodeBlock = ({ children }: { children: any }) => {
+    const [copied, setCopied] = useState(false);
+    const content = String(children).replace(/\n$/, '');
+
+    const handleCopy = () => {
+      navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+      <div className="relative group/code my-4">
+        <div className="flex items-center justify-between px-4 py-2 bg-black/60 border-x border-t border-white/10 rounded-t-lg text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+          <span>Terminal Output</span>
+          <button 
+            onClick={handleCopy}
+            className="hover:text-white transition-colors flex items-center gap-1.5"
+          >
+            {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <pre className="p-4 bg-black/40 border border-white/10 rounded-b-lg overflow-x-auto custom-scrollbar font-mono text-xs text-brand-accent leading-relaxed">
+          <code>{children}</code>
+        </pre>
+      </div>
+    );
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent, overrideInput?: string) => {
+    if (e) e.preventDefault();
+    const finalInput = overrideInput || input;
+    if ((!finalInput.trim() && !selectedImage) || isLoading) return;
 
     let sessionId = currentSessionId;
     if (!sessionId) {
@@ -148,7 +186,7 @@ export default function App() {
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input,
+      content: finalInput,
       image: selectedImage || undefined,
       timestamp: Date.now(),
     };
@@ -160,7 +198,7 @@ export default function App() {
       return s;
     }));
 
-    const userText = input;
+    const userText = finalInput;
     const userImg = selectedImage;
     setInput('');
     setSelectedImage(null);
@@ -251,20 +289,28 @@ export default function App() {
                 <p className="text-center py-4 text-xs text-slate-600">No recent sessions</p>
               )}
               {sessions.map(session => (
-                <button
-                  key={session.id}
-                  onClick={() => setCurrentSessionId(session.id)}
-                  className={cn(
-                    "w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all truncate hover:bg-white/[0.03] group",
-                    currentSessionId === session.id ? "bg-white/[0.05] text-white" : "text-slate-500"
-                  )}
-                  id={`session-${session.id}`}
-                >
-                  <span className="truncate block">{session.title}</span>
-                  <span className="text-[9px] opacity-40 font-mono mt-0.5 block">
-                    {new Date(session.createdAt).toLocaleDateString()}
-                  </span>
-                </button>
+                <div key={session.id} className="relative group">
+                  <button
+                    onClick={() => setCurrentSessionId(session.id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all truncate hover:bg-white/[0.03]",
+                      currentSessionId === session.id ? "bg-white/[0.05] text-white" : "text-slate-500"
+                    )}
+                    id={`session-${session.id}`}
+                  >
+                    <span className="truncate block pr-6">{session.title}</span>
+                    <span className="text-[9px] opacity-40 font-mono mt-0.5 block">
+                      {new Date(session.createdAt).toLocaleDateString()}
+                    </span>
+                  </button>
+                  <button
+                    onClick={(e) => deleteSession(e, session.id)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-red-500/10 hover:text-red-500 opacity-40 group-hover:opacity-100 transition-all text-slate-400"
+                    title="Delete session"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               ))}
             </div>
           </section>
@@ -364,10 +410,25 @@ export default function App() {
                         : "bg-white/[0.03] border border-white/5 rounded-tl-none text-slate-300"
                     )}>
                       <div className={cn(
-                        "prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-black/40 prose-pre:border prose-pre:border-white/5 break-words",
+                        "prose prose-sm max-w-none prose-p:leading-relaxed break-words",
                         message.role === 'user' ? "prose-invert" : "prose-slate"
                       )}>
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            code({ node, className, children, ...props }) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              return match || !node?.position ? (
+                                <CodeBlock>{children}</CodeBlock>
+                              ) : (
+                                <code className={cn("bg-black/20 px-1 rounded", className)} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
                       </div>
                       
                       {message.role === 'model' && (
@@ -481,10 +542,8 @@ export default function App() {
               <button 
                 key={i} 
                 onClick={() => {
-                  const query = `Perform a ${cmd} diagnostic analysis. What information do you need?`;
-                  setInput(query);
-                  // Optional: Automatically send if you want immediate execution
-                  // handleSendMessage(new Event('submit') as any); 
+                  const query = `Initiate ${cmd} command sequence. Please verify requirements.`;
+                  handleSendMessage(undefined, query); 
                 }}
                 className="text-[10px] text-slate-500 uppercase tracking-widest hover:text-white transition-colors font-bold cursor-pointer"
               >
